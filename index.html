@@ -1,0 +1,1875 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>BRD Tracker</title>
+  
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
+    import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js";
+    import { getFirestore, doc, setDoc, onSnapshot, collection } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
+    
+    // Attach to window so Babel/React can access them
+    window.FB = {
+      initializeApp, getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged,
+      getFirestore, doc, setDoc, onSnapshot, collection
+    };
+  </script>
+</head>
+<body class="bg-gray-100 font-sans antialiased text-gray-900 overflow-hidden">
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect, useMemo, Fragment } = React;
+
+    // ==========================================
+    // INLINE ICON SYSTEM (Lucide-React Port)
+    // ==========================================
+    const ICONS = {
+      Search: '<circle cx="11" cy="11" r="8"/><line x1="21" x2="16.65" y1="21" y2="16.65"/>',
+      Edit2: '<path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/>',
+      Save: '<path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/>',
+      X: '<line x1="18" x2="6" y1="6" y2="18"/><line x1="6" x2="18" y1="6" y2="18"/>',
+      Plus: '<line x1="12" x2="12" y1="5" y2="19"/><line x1="5" x2="19" y1="12" y2="12"/>',
+      ChevronLeft: '<path d="m15 18-6-6 6-6"/>',
+      CheckCircle: '<path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><path d="m9 11 3 3L22 4"/>',
+      Clock: '<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>',
+      AlertCircle: '<circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="8" y2="12"/><line x1="12" x2="12.01" y1="16" y2="16"/>',
+      FileText: '<path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M10 9H8"/><path d="M16 13H8"/><path d="M16 17H8"/>',
+      LayoutDashboard: '<rect width="7" height="9" x="3" y="3" rx="1"/><rect width="7" height="5" x="14" y="3" rx="1"/><rect width="7" height="9" x="14" y="12" rx="1"/><rect width="7" height="5" x="3" y="16" rx="1"/>',
+      Users: '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>',
+      Building2: '<path d="M6 22V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v18Z"/><path d="M6 12H4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2"/><path d="M18 9h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-2"/><path d="M10 6h4"/><path d="M10 10h4"/><path d="M10 14h4"/><path d="M10 18h4"/>',
+      Check: '<path d="M20 6 9 17l-5-5"/>',
+      Activity: '<path d="M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2"/>',
+      ToggleLeft: '<rect width="20" height="12" x="2" y="6" rx="6" ry="6"/><circle cx="8" cy="12" r="2"/>',
+      ToggleRight: '<rect width="20" height="12" x="2" y="6" rx="6" ry="6"/><circle cx="16" cy="12" r="2"/>',
+      ExternalLink: '<path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>',
+      UserCog: '<circle cx="9" cy="7" r="4"/><path d="M10 15H6a4 4 0 0 0-4 4v2"/><circle cx="17" cy="17" r="3"/><path d="m21 17-1.9-.4"/><path d="m14.9 17.4 1.9-.4"/><path d="m18.7 15.3-1.6 1"/><path d="m16.9 19.7-1.6-1"/><path d="m18.7 18.7-1.6-1"/><path d="m16.9 14.3-1.6 1"/>',
+      LogOut: '<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" x2="9" y1="12" y2="12"/>',
+      Lock: '<rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>',
+      Filter: '<polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/>',
+      RefreshCw: '<path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/>',
+      Upload: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/>',
+      FileUp: '<path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M12 12v6"/><path d="m15 15-3-3-3 3"/>'
+    };
+
+    const createIcon = (paths) => ({ size = 24, className = '', title, ...props }) => (
+      <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className} {...props}>
+        {title && <title>{title}</title>}
+        <g dangerouslySetInnerHTML={{ __html: paths }} />
+      </svg>
+    );
+
+    const Search = createIcon(ICONS.Search); const Edit2 = createIcon(ICONS.Edit2); const Save = createIcon(ICONS.Save);
+    const X = createIcon(ICONS.X); const Plus = createIcon(ICONS.Plus); const ChevronLeft = createIcon(ICONS.ChevronLeft);
+    const CheckCircle = createIcon(ICONS.CheckCircle); const Clock = createIcon(ICONS.Clock); const AlertCircle = createIcon(ICONS.AlertCircle);
+    const FileText = createIcon(ICONS.FileText); const LayoutDashboard = createIcon(ICONS.LayoutDashboard); const Users = createIcon(ICONS.Users);
+    const Building2 = createIcon(ICONS.Building2); const Check = createIcon(ICONS.Check); const Activity = createIcon(ICONS.Activity);
+    const ToggleLeft = createIcon(ICONS.ToggleLeft); const ToggleRight = createIcon(ICONS.ToggleRight); const ExternalLink = createIcon(ICONS.ExternalLink);
+    const UserCog = createIcon(ICONS.UserCog); const LogOut = createIcon(ICONS.LogOut); const Lock = createIcon(ICONS.Lock);
+    const Filter = createIcon(ICONS.Filter); const RefreshCw = createIcon(ICONS.RefreshCw); const Upload = createIcon(ICONS.Upload); const FileUp = createIcon(ICONS.FileUp);
+
+    // ==========================================
+    // ==========================================
+    const STAGES = ['Backlog', 'BRD Creation', 'Team Review', 'Client Review', 'Approved', 'Go-Live', 'On-Hold', 'Terminated'];
+    const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+    const YEARS = ['2025', '2026', '2027'];
+
+    const INITIAL_USERS = [
+      { id: '1', firstName: 'Admin', lastName: 'User', email: 'admin@brdtracker.com', password: 'password', status: 'Active', lastUpdated: '09/21/2026' }
+    ];
+
+    const INITIAL_BAS = [];
+    const INITIAL_ACCOUNTS = [];
+    const INITIAL_BRDS = [];
+
+    // ==========================================
+    // ==========================================
+    const calculateDays = (start, end) => {
+      if (!start || !end) return '-';
+      const d1 = new Date(start);
+      const d2 = new Date(end);
+      if (isNaN(d1.getTime()) || isNaN(d2.getTime())) return '-';
+      const diffDays = Math.ceil((d2 - d1) / (1000 * 60 * 60 * 24));
+      return diffDays >= 0 ? `${diffDays} Days` : '-';
+    };
+
+    const checkChronologicalDates = (draft, submit, signoff) => {
+      if (draft && submit && new Date(submit) < new Date(draft)) {
+        return "Date Submitted to Client cannot be earlier than Draft Date.";
+      }
+      if (submit && signoff && new Date(signoff) < new Date(submit)) {
+        return "Signed-Off Date cannot be earlier than Date Submitted to Client.";
+      }
+      if (draft && signoff && new Date(signoff) < new Date(draft)) {
+        return "Signed-Off Date cannot be earlier than Draft Date.";
+      }
+      return '';
+    };
+
+    const isDateInPeriod = (dateStr, month, year) => {
+      if (!dateStr) return false;
+      const d = new Date(dateStr);
+      if (isNaN(d.getTime())) return false;
+      const dMonth = MONTHS[d.getMonth()];
+      const dYear = String(d.getFullYear());
+      return dMonth === month && dYear === String(year);
+    };
+
+    // ==========================================
+    // ==========================================
+    function Badge({ status }) {
+      const styles = {
+        'Backlog': 'bg-gray-100 text-gray-700 border-gray-200',
+        'BRD Creation': 'bg-blue-50 text-blue-700 border-blue-200',
+        'Team Review': 'bg-purple-50 text-purple-700 border-purple-200',
+        'Client Review': 'bg-yellow-50 text-yellow-700 border-yellow-200',
+        'Approved': 'bg-emerald-50 text-emerald-700 border-emerald-200',
+        'Go-Live': 'bg-emerald-50 text-emerald-700 border-emerald-200',
+        'On-Hold': 'bg-orange-50 text-orange-700 border-orange-200',
+        'Terminated': 'bg-red-50 text-red-700 border-red-200',
+        'Active': 'bg-emerald-50 text-emerald-700 border-emerald-200',
+        'Inactive': 'bg-gray-100 text-gray-500 border-gray-200',
+      };
+      return (
+        <span className={`px-2.5 py-1 rounded-full text-xs font-medium border ${styles[status] || 'bg-gray-100 text-gray-700 border-gray-200'}`}>
+          {status}
+        </span>
+      );
+    }
+
+    function Stepper({ currentStage }) {
+      const activeStages = STAGES.filter(s => s !== 'Terminated' && s !== 'On-Hold');
+      const currentIndex = activeStages.indexOf(currentStage);
+      const isTerminated = currentStage === 'Terminated';
+      const isOnHold = currentStage === 'On-Hold';
+
+      return (
+        <div className="w-full py-6 overflow-x-auto">
+          <div className="flex items-center min-w-max px-4">
+            {activeStages.map((stage, index) => {
+              const isCompleted = index < currentIndex || (currentIndex === activeStages.length - 1 && index === currentIndex);
+              const isActive = index === currentIndex;
+              
+              return (
+                <div key={stage} className="flex items-center">
+                  <div className="relative flex flex-col items-center">
+                    <div className={`w-10 h-10 rounded-full flex items-center justify-center border-2 transition-colors duration-300
+                      ${isCompleted ? 'bg-blue-600 border-blue-600 text-white' : 
+                        isActive ? 'bg-blue-50 border-blue-600 text-blue-600' : 
+                        isTerminated || isOnHold ? 'bg-gray-50 border-gray-300 text-gray-400 opacity-50' :
+                        'bg-white border-gray-300 text-gray-400'}`}>
+                      {isCompleted ? <Check size={20} /> : <span className="text-sm font-semibold">{index + 1}</span>}
+                    </div>
+                    <div className={`absolute top-12 text-xs font-medium w-28 text-center
+                      ${isActive ? 'text-blue-700 font-bold' : isCompleted ? 'text-gray-800' : 'text-gray-400'}`}>
+                      {stage}
+                    </div>
+                  </div>
+                  {index < activeStages.length - 1 && (
+                    <div className={`w-16 h-1 mx-2 rounded ${isCompleted ? 'bg-blue-600' : 'bg-gray-200'}`} />
+                  )}
+                </div>
+              );
+            })}
+            {(isTerminated || isOnHold) && (
+              <Fragment>
+                <div className="w-16 h-1 mx-2 rounded bg-gray-200" />
+                <div className="relative flex flex-col items-center">
+                  <div className={`w-10 h-10 rounded-full flex items-center justify-center border-2 ${isTerminated ? 'bg-red-50 border-red-600 text-red-600' : 'bg-orange-50 border-orange-600 text-orange-600'}`}>
+                    {isTerminated ? <AlertCircle size={20} /> : <Clock size={20} />}
+                  </div>
+                  <div className={`absolute top-12 text-xs font-bold w-28 text-center ${isTerminated ? 'text-red-600' : 'text-orange-600'}`}>
+                    {currentStage}
+                  </div>
+                </div>
+              </Fragment>
+            )}
+          </div>
+        </div>
+      );
+    }
+
+    // ==========================================
+    // ==========================================
+    function Dashboard({ brds }) {
+      const [filterMonth, setFilterMonth] = useState('September');
+      const [filterYear, setFilterYear] = useState('2026');
+      const [appliedMonth, setAppliedMonth] = useState('September');
+      const [appliedYear, setAppliedYear] = useState('2026');
+
+      const handleApplyFilter = () => {
+        setAppliedMonth(filterMonth);
+        setAppliedYear(filterYear);
+      };
+
+      const handleResetFilter = () => {
+        const today = new Date();
+        const currentMonth = MONTHS[today.getMonth()];
+        const currentYear = String(today.getFullYear());
+        setFilterMonth(currentMonth);
+        setFilterYear(currentYear);
+        setAppliedMonth(currentMonth);
+        setAppliedYear(currentYear);
+      };
+
+      const kpiData = useMemo(() => {
+        let docAccTotal = 0; let docAccPass = 0;
+        let reworkTotal = 0; let reworkCount = 0;
+        let onTimeTotal = 0; let onTimePass = 0;
+        let cycleTimeSum = 0; let cycleTimeCount = 0;
+
+        let stageCounts = {
+          'Total': 0, 'Backlog': 0, 'BRD Creation': 0, 'Team Review': 0, 
+          'Client Review': 0, 'Approved': 0, 'Go-Live': 0, 'On-Hold': 0, 'Terminated': 0
+        };
+
+        const periodEndDate = new Date(`${appliedMonth} 31, ${appliedYear} 23:59:59`);
+        const safeBrds = Array.isArray(brds) ? brds : [];
+
+        safeBrds.forEach(brd => {
+          const hRecords = Array.isArray(brd.history) ? brd.history : [];
+          const aRecords = Array.isArray(brd.activityLog) ? brd.activityLog : [];
+
+          const relevantHistory = hRecords
+            .filter(h => h.date && new Date(h.date) <= periodEndDate)
+            .sort((a, b) => new Date(b.date) - new Date(a.date));
+
+          if (relevantHistory.length > 0) {
+            const histStage = relevantHistory[0].to;
+            if (stageCounts[histStage] !== undefined) stageCounts[histStage]++;
+            stageCounts['Total']++;
+          }
+
+          const getHistoricalFieldValue = (fieldName) => {
+            let val = brd[fieldName]; 
+            const relevantUpdates = aRecords.filter(a => 
+              a.action && a.action.includes(fieldName) && a.date && new Date(a.date) <= periodEndDate
+            ).sort((a, b) => new Date(b.date) - new Date(a.date));
+
+            if (relevantUpdates.length > 0) return relevantUpdates[0].new;
+
+            const createRec = hRecords.find(h => h.remarks === 'Record created' || h.remarks === 'Init' || h.remarks === 'Started');
+            if (createRec && createRec.date && new Date(createRec.date) > periodEndDate) return null; 
+            return val;
+          };
+
+          const reachedApprovedInPeriod = hRecords.some(h => h.to === 'Approved' && h.date && isDateInPeriod(h.date, appliedMonth, appliedYear));
+          if (reachedApprovedInPeriod) {
+            docAccTotal++;
+            if (getHistoricalFieldValue('changesAfterSignOff') === 'No') docAccPass++;
+          }
+
+          const wasInReviewStagesInPeriod = hRecords.some(h => 
+            ['Team Review', 'Client Review', 'Approved'].includes(h.to) && h.date && isDateInPeriod(h.date, appliedMonth, appliedYear)
+          );
+          if (wasInReviewStagesInPeriod) {
+            reworkTotal++;
+            if (getHistoricalFieldValue('withRework') === 'Yes') reworkCount++;
+          }
+
+          const reachedClientOrApprovedInPeriod = hRecords.some(h => 
+            ['Client Review', 'Approved'].includes(h.to) && h.date && isDateInPeriod(h.date, appliedMonth, appliedYear)
+          );
+          if (reachedClientOrApprovedInPeriod) {
+            onTimeTotal++;
+            if (getHistoricalFieldValue('onTime') === 'Yes') onTimePass++;
+          }
+
+          if (reachedApprovedInPeriod && brd.draftDate && brd.signOffDate) {
+             const d1 = new Date(brd.draftDate);
+             const d2 = new Date(brd.signOffDate);
+             const diffDays = Math.ceil((d2 - d1) / (1000 * 60 * 60 * 24));
+             if (diffDays >= 0 && !isNaN(diffDays)) { cycleTimeSum += diffDays; cycleTimeCount++; }
+          }
+        });
+
+        return {
+          docAccuracy: docAccTotal > 0 ? Math.round((docAccPass / docAccTotal) * 100) : 0,
+          reworkRate: reworkTotal > 0 ? Math.round((reworkCount / reworkTotal) * 100) : 0,
+          onTimeRate: onTimeTotal > 0 ? Math.round((onTimePass / onTimeTotal) * 100) : 0,
+          avgCycleDays: cycleTimeCount > 0 ? Math.round(cycleTimeSum / cycleTimeCount) : 0,
+          docAccTotal: docAccTotal, 
+          reworkTotal: reworkTotal, 
+          onTimeTotal: onTimeTotal, 
+          cycleTimeCount: cycleTimeCount, 
+          stageCounts: stageCounts
+        };
+      }, [brds, appliedMonth, appliedYear]);
+
+      const stats = [
+        { label: 'Total BRDs', value: kpiData.stageCounts['Total'], color: 'text-blue-600', bg: 'bg-blue-50' },
+        { label: 'BRD Creation', value: kpiData.stageCounts['BRD Creation'], color: 'text-amber-600', bg: 'bg-amber-50' },
+        { label: 'Team Review', value: kpiData.stageCounts['Team Review'], color: 'text-indigo-600', bg: 'bg-indigo-50' },
+        { label: 'Client Review', value: kpiData.stageCounts['Client Review'], color: 'text-purple-600', bg: 'bg-purple-50' },
+        { label: 'Approved', value: kpiData.stageCounts['Approved'], color: 'text-emerald-600', bg: 'bg-emerald-50' },
+        { label: 'Go-Live', value: kpiData.stageCounts['Go-Live'], color: 'text-cyan-600', bg: 'bg-cyan-50' },
+        { label: 'On-Hold', value: kpiData.stageCounts['On-Hold'], color: 'text-orange-600', bg: 'bg-orange-50' },
+        { label: 'Terminated', value: kpiData.stageCounts['Terminated'], color: 'text-red-600', bg: 'bg-red-50' }
+      ];
+
+      const recentUpdates = Array.isArray(brds) ? [...brds].sort((a, b) => new Date(b.lastUpdated || 0) - new Date(a.lastUpdated || 0)).slice(0, 5) : [];
+
+      return (
+        <div className="p-4 md:p-6 max-w-7xl mx-auto space-y-6 animate-in fade-in duration-500">
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
+            <p className="text-gray-500 text-sm mt-1">Overview of Business Requirements Documents.</p>
+          </div>
+
+          <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 flex flex-col md:flex-row items-center justify-between gap-4">
+            <div className="flex items-center gap-2 text-gray-700 font-medium">
+               <Filter size={18} className="text-blue-600"/>
+               <span>KPI Period:</span>
+            </div>
+            <div className="flex items-center gap-3 flex-1">
+              <select value={filterMonth} onChange={e => setFilterMonth(e.target.value)} className="p-2 border border-gray-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500 bg-white">
+                {MONTHS.map(m => <option key={m} value={m}>{m}</option>)}
+              </select>
+              <select value={filterYear} onChange={e => setFilterYear(e.target.value)} className="p-2 border border-gray-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500 bg-white">
+                {YEARS.map(y => <option key={y} value={y}>{y}</option>)}
+              </select>
+              <button onClick={handleApplyFilter} className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors shadow-sm">
+                Apply
+              </button>
+              <button onClick={handleResetFilter} className="flex items-center bg-gray-100 text-gray-700 px-3 py-2 rounded-lg text-sm font-medium hover:bg-gray-200 transition-colors">
+                <RefreshCw size={14} className="mr-1.5"/> Reset
+              </button>
+            </div>
+            <div className="text-sm font-semibold bg-blue-50 text-blue-700 px-4 py-2 rounded-lg border border-blue-100">
+               Showing: {appliedMonth} {appliedYear}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="bg-white rounded-xl p-5 border border-gray-200 flex flex-col items-center text-center shadow-sm relative overflow-hidden group hover:border-emerald-300 transition-colors">
+              <div className="absolute top-0 left-0 w-full h-1 bg-emerald-500"></div>
+              <CheckCircle className="text-emerald-500 mb-3 group-hover:scale-110 transition-transform" size={28} />
+              <span className="text-4xl font-bold text-gray-900 mb-1">{kpiData.docAccTotal > 0 ? `${kpiData.docAccuracy}%` : 'N/A'}</span>
+              <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide mt-1">Document Accuracy</span>
+              <span className="text-[10px] text-gray-400 mt-2 bg-gray-50 px-2 py-1 rounded">Based on {kpiData.docAccTotal} Approved BRDs</span>
+            </div>
+            <div className="bg-white rounded-xl p-5 border border-gray-200 flex flex-col items-center text-center shadow-sm relative overflow-hidden group hover:border-amber-300 transition-colors">
+              <div className="absolute top-0 left-0 w-full h-1 bg-amber-500"></div>
+              <AlertCircle className="text-amber-500 mb-3 group-hover:scale-110 transition-transform" size={28} />
+              <span className="text-4xl font-bold text-gray-900 mb-1">{kpiData.reworkTotal > 0 ? `${kpiData.reworkRate}%` : 'N/A'}</span>
+              <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide mt-1">Rework Rate</span>
+              <span className="text-[10px] text-gray-400 mt-2 bg-gray-50 px-2 py-1 rounded">Based on {kpiData.reworkTotal} Active Reviews</span>
+            </div>
+            <div className="bg-white rounded-xl p-5 border border-gray-200 flex flex-col items-center text-center shadow-sm relative overflow-hidden group hover:border-blue-300 transition-colors">
+              <div className="absolute top-0 left-0 w-full h-1 bg-blue-500"></div>
+              <Clock className="text-blue-500 mb-3 group-hover:scale-110 transition-transform" size={28} />
+              <span className="text-4xl font-bold text-gray-900 mb-1">{kpiData.onTimeTotal > 0 ? `${kpiData.onTimeRate}%` : 'N/A'}</span>
+              <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide mt-1">On-Time Deliverables</span>
+              <span className="text-[10px] text-gray-400 mt-2 bg-gray-50 px-2 py-1 rounded">Based on {kpiData.onTimeTotal} Client Reviews</span>
+            </div>
+            <div className="bg-white rounded-xl p-5 border border-gray-200 flex flex-col items-center text-center shadow-sm relative overflow-hidden group hover:border-purple-300 transition-colors">
+              <div className="absolute top-0 left-0 w-full h-1 bg-purple-500"></div>
+              <Activity className="text-purple-500 mb-3 group-hover:scale-110 transition-transform" size={28} />
+              <span className="text-4xl font-bold text-gray-900 mb-1">
+                 {kpiData.cycleTimeCount > 0 ? (
+                   <span className="flex items-baseline justify-center gap-1">
+                     {kpiData.avgCycleDays} <span className="text-lg text-gray-500 font-medium">Days</span>
+                   </span>
+                 ) : 'N/A'}
+              </span>
+              <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide mt-1">Avg End-to-End Cycle</span>
+              <span className="text-[10px] text-gray-400 mt-2 bg-gray-50 px-2 py-1 rounded">Based on {kpiData.cycleTimeCount} Completed BRDs</span>
+            </div>
+          </div>
+          
+          <div>
+            <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
+              <Activity className="mr-2 text-gray-400" size={20}/> Stage Summary for {appliedMonth} {appliedYear}
+            </h3>
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+              {stats.map(stat => (
+                <div key={stat.label} className="bg-white p-5 rounded-xl shadow-sm border border-gray-200 flex flex-col justify-between hover:shadow-md transition-shadow group">
+                  <span className="text-sm font-medium text-gray-500 group-hover:text-blue-600 transition-colors">{stat.label}</span>
+                  <div className="flex items-end justify-between mt-2">
+                    <span className={`text-3xl font-bold ${stat.color}`}>{String(stat.value)}</span>
+                    <div className={`p-2 rounded-lg ${stat.bg}`}><Activity size={20} className={stat.color} /></div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200 flex flex-col">
+            <h3 className="text-lg font-semibold text-gray-900 mb-6 flex items-center">
+              <Clock className="mr-2 text-gray-400" size={20}/> Recently Updated BRDs
+            </h3>
+            <div className="flex-1 overflow-y-auto pr-2">
+              <div className="space-y-4">
+                {recentUpdates.map(brd => {
+                  const lastUser = brd.activityLog?.[0]?.user || brd.history?.[0]?.by || 'System User';
+                  return (
+                    <div key={brd.id} className="flex items-start p-4 bg-gray-50 rounded-lg border border-gray-200 hover:bg-blue-50/50 hover:border-blue-200 transition-colors">
+                      <div className="p-2 bg-white rounded-md border border-gray-200 mr-4 shrink-0 mt-0.5 shadow-sm">
+                        <FileText size={16} className="text-blue-600"/>
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex justify-between items-start gap-4">
+                          <div className="text-sm font-bold text-gray-900 truncate" title={brd.title}>{brd.title}</div>
+                          <div className="shrink-0 text-sm font-medium text-gray-600">{brd.stage}</div>
+                        </div>
+                        <div className="text-xs text-gray-600 mt-2 flex flex-wrap items-center gap-x-4 gap-y-1.5">
+                          <span className="flex items-center gap-1.5 font-medium"><Building2 size={13} className="text-gray-400"/> {brd.community}</span>
+                          <span className="text-gray-300">|</span>
+                          <span className="flex items-center gap-1.5 font-medium"><Users size={13} className="text-gray-400"/> {brd.ba}</span>
+                        </div>
+                        <div className="text-[11px] text-gray-500 mt-3 pt-2.5 border-t border-gray-200 flex items-center">
+                          <Clock size={12} className="mr-1.5 text-gray-400"/> Updated by <strong className="mx-1 text-gray-700">{lastUser}</strong> on {String(brd.lastUpdated || '-')}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+                {recentUpdates.length === 0 && <div className="text-center py-6 text-gray-500 text-sm">No BRD updates found.</div>}
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // ==========================================
+    // ==========================================
+    function BrdList({ brds, onView, onAdd, accounts, bas }) {
+      const [searchTerm, setSearchTerm] = useState('');
+      const [filterStage, setFilterStage] = useState('All Stages');
+      const [filterAccount, setFilterAccount] = useState('All Accounts');
+      const [filterBa, setFilterBa] = useState('All BAs');
+
+      const safeBrds = Array.isArray(brds) ? brds : [];
+      
+      const filteredBrds = safeBrds.filter(brd => {
+        const titleMatch = brd.title ? brd.title.toLowerCase().includes(searchTerm.toLowerCase()) : false;
+        const idMatch = brd.id ? String(brd.id).toLowerCase().includes(searchTerm.toLowerCase()) : false;
+        const matchesSearch = titleMatch || idMatch;
+        
+        const matchesStage = filterStage === 'All Stages' || brd.stage === filterStage;
+        const matchesAccount = filterAccount === 'All Accounts' || brd.community === filterAccount;
+        const matchesBa = filterBa === 'All BAs' || brd.ba === filterBa;
+        return matchesSearch && matchesStage && matchesAccount && matchesBa;
+      });
+
+      return (
+        <div className="p-4 md:p-6 max-w-7xl mx-auto space-y-6 animate-in fade-in duration-500">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div>
+              <h1 className="text-2xl font-bold text-gray-900">BRD Repository</h1>
+              <p className="text-gray-500 text-sm mt-1">Manage and track all Business Requirements Documents.</p>
+            </div>
+            <button onClick={onAdd} className="flex items-center bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors whitespace-nowrap shadow-sm">
+              <Plus size={16} className="mr-2"/> New BRD
+            </button>
+          </div>
+
+          <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 flex flex-col lg:flex-row gap-4">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+              <input type="text" placeholder="Search by ID or Title..." className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
+            </div>
+            <div className="flex flex-col md:flex-row gap-4">
+              <select value={filterStage} onChange={e => setFilterStage(e.target.value)} className="w-full md:w-48 p-2 border border-gray-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500 bg-white cursor-pointer">
+                <option value="All Stages">All Stages</option>
+                {STAGES.map(s => <option key={s} value={s}>{s}</option>)}
+              </select>
+              <select value={filterAccount} onChange={e => setFilterAccount(e.target.value)} className="w-full md:w-48 p-2 border border-gray-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500 bg-white cursor-pointer">
+                <option value="All Accounts">All Accounts</option>
+                {(Array.isArray(accounts) ? accounts : []).map(a => <option key={a.id} value={a.name}>{a.name}</option>)}
+              </select>
+              <select value={filterBa} onChange={e => setFilterBa(e.target.value)} className="w-full md:w-48 p-2 border border-gray-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500 bg-white cursor-pointer">
+                <option value="All BAs">All BAs</option>
+                {(Array.isArray(bas) ? bas : []).map(b => <option key={b.id} value={b.name}>{b.name}</option>)}
+              </select>
+            </div>
+          </div>
+
+          <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-sm whitespace-nowrap">
+                <thead className="bg-gray-50 text-gray-600 border-b border-gray-200">
+                  <tr>
+                    <th className="px-4 py-3 font-medium">ID</th>
+                    <th className="px-4 py-3 font-medium">Title</th>
+                    <th className="px-4 py-3 font-medium">Account</th>
+                    <th className="px-4 py-3 font-medium">BA</th>
+                    <th className="px-4 py-3 font-medium">Stage</th>
+                    <th className="px-4 py-3 font-medium">Last Updated</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {filteredBrds.map(brd => (
+                    <tr key={brd.id} onClick={() => onView(brd)} className="hover:bg-blue-50/50 cursor-pointer transition-colors group">
+                      <td className="px-4 py-3 font-medium text-blue-600 group-hover:text-blue-700">{brd.id}</td>
+                      <td className="px-4 py-3 text-gray-900 font-medium">{brd.title}</td>
+                      <td className="px-4 py-3 text-gray-600">{brd.community}</td>
+                      <td className="px-4 py-3 text-gray-600">{brd.ba}</td>
+                      <td className="px-4 py-3"><Badge status={brd.stage} /></td>
+                      <td className="px-4 py-3 text-gray-500">{brd.lastUpdated ? String(brd.lastUpdated).split(',')[0] : '-'}</td>
+                    </tr>
+                  ))}
+                  {filteredBrds.length === 0 && (
+                    <tr><td colSpan="7" className="px-4 py-8 text-center text-gray-500">No BRDs found matching your filters.</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // ==========================================
+    // ==========================================
+    function BrdDetail({ brd, onBack, onUpdate, accounts, bas, currentUser }) {
+      const [isEditing, setIsEditing] = useState(false);
+      const [formData, setFormData] = useState({ ...brd });
+      const [activeTab, setActiveTab] = useState('stage');
+      const [validationError, setValidationError] = useState('');
+      const [toast, setToast] = useState('');
+      
+      const [showStageModal, setShowStageModal] = useState(false);
+      const [pendingStage, setPendingStage] = useState(brd.stage);
+      const [stageRemarks, setStageRemarks] = useState('');
+      const [missingFields, setMissingFields] = useState([]);
+      const [modalFormData, setModalFormData] = useState({});
+      const [modalError, setModalError] = useState('');
+
+      useEffect(() => {
+        setFormData(brd);
+        setValidationError('');
+      }, [brd, isEditing]);
+
+      const showToast = (msg) => {
+        setToast(msg);
+        setTimeout(() => setToast(''), 3000);
+      };
+
+      const getMissingRequiredFields = (targetStage, currentData) => {
+        if (targetStage === 'Terminated' || targetStage === 'On-Hold') return [];
+        const activeStagesList = STAGES.filter(s => s !== 'Terminated' && s !== 'On-Hold');
+        const targetIdx = activeStagesList.indexOf(targetStage);
+        const missing = [];
+        
+        if (targetIdx >= activeStagesList.indexOf('BRD Creation') && !currentData.draftDate) missing.push({ id: 'draftDate', label: 'Draft Date', type: 'date' });
+        if (targetIdx >= activeStagesList.indexOf('Team Review') && !currentData.withRework) missing.push({ id: 'withRework', label: 'WITH REWORK?', type: 'radio' });
+        if (targetIdx >= activeStagesList.indexOf('Client Review')) {
+          if (!currentData.clientSubmitDate) missing.push({ id: 'clientSubmitDate', label: 'Date Submitted to Client', type: 'date' });
+          if (!currentData.onTime) missing.push({ id: 'onTime', label: 'DELIVERED ON-TIME?', type: 'radio' });
+        }
+        if (targetIdx >= activeStagesList.indexOf('Approved')) {
+          if (!currentData.signOffDate) missing.push({ id: 'signOffDate', label: 'Signed-Off Date', type: 'date' });
+          if (!currentData.changesAfterSignOff) missing.push({ id: 'changesAfterSignOff', label: 'CHANGES AFTER SIGN-OFF?', type: 'radio' });
+        }
+        return missing;
+      };
+
+      const handleSave = () => {
+        if (!formData.title || !formData.description || !formData.community || !formData.ba || !formData.classification || !formData.isStandard) {
+          setValidationError('Please fill in all general required fields marked with an asterisk (*).');
+          return;
+        }
+        
+        const isTerminatedOrHold = formData.stage === 'Terminated' || formData.stage === 'On-Hold';
+        if (!isTerminatedOrHold) {
+          const activeStagesList = STAGES.filter(s => s !== 'Terminated' && s !== 'On-Hold');
+          const targetIdx = activeStagesList.indexOf(formData.stage);
+          
+          if (targetIdx >= activeStagesList.indexOf('Team Review') && !formData.withRework) { setValidationError('WITH REWORK? is required for the current stage.'); return; }
+          if (targetIdx >= activeStagesList.indexOf('Client Review') && !formData.onTime) { setValidationError('DELIVERED ON-TIME? is required for the current stage.'); return; }
+          if (targetIdx >= activeStagesList.indexOf('Approved') && !formData.changesAfterSignOff) { setValidationError('CHANGES AFTER SIGN-OFF? is required for the current stage.'); return; }
+
+          const missing = getMissingRequiredFields(formData.stage, formData);
+          if (missing.length > 0) {
+            setValidationError(`The following fields are required for the ${formData.stage} stage: ${missing.map(f => f.label).join(', ')}`);
+            return;
+          }
+
+          const dateError = checkChronologicalDates(formData.draftDate, formData.clientSubmitDate, formData.signOffDate);
+          if (dateError) { setValidationError(dateError); return; }
+        }
+
+        setValidationError('');
+        let newActivities = [...(brd.activityLog || [])];
+        const timestamp = new Date().toLocaleString('en-US', { dateStyle: 'short', timeStyle: 'short' });
+        const userName = currentUser ? `${currentUser.firstName} ${currentUser.lastName}` : 'System User';
+        
+        const fieldsToTrack = ['draftDate', 'clientSubmitDate', 'signOffDate', 'withRework', 'changesAfterSignOff', 'onTime', 'description', 'community', 'ba', 'classification', 'isStandard', 'documentLink', 'title'];
+        fieldsToTrack.forEach(field => {
+          if (brd[field] !== formData[field]) {
+            newActivities.unshift({ id: String(Date.now() + Math.random()), date: timestamp, user: userName, action: `${field} updated`, prev: brd[field] || '-', new: formData[field] || '-' });
+          }
+        });
+
+        onUpdate({ ...formData, lastUpdated: timestamp, activityLog: newActivities });
+        setIsEditing(false);
+        showToast('BRD record updated successfully.');
+      };
+
+      const handleStageChangeRequest = (e) => {
+        const newStage = e.target.value;
+        if (newStage !== brd.stage) {
+          const requiredMissing = getMissingRequiredFields(newStage, formData);
+          setMissingFields(requiredMissing);
+          const initialModalData = {};
+          requiredMissing.forEach(field => { initialModalData[field.id] = ''; });
+          setModalFormData(initialModalData);
+          setPendingStage(newStage);
+          setModalError('');
+          setShowStageModal(true);
+        }
+      };
+
+      const confirmStageChange = () => {
+        for (let field of missingFields) {
+          if (!modalFormData[field.id]) { setModalError(`Please provide a value for ${field.label}.`); return; }
+        }
+        const combinedData = { ...formData, ...modalFormData };
+        if (pendingStage !== 'Terminated' && pendingStage !== 'On-Hold') {
+          const dateError = checkChronologicalDates(combinedData.draftDate, combinedData.clientSubmitDate, combinedData.signOffDate);
+          if (dateError) { setModalError(dateError); return; }
+        }
+        
+        setModalError('');
+        const timestamp = new Date().toLocaleString('en-US', { dateStyle: 'short', timeStyle: 'short' });
+        const userName = currentUser ? `${currentUser.firstName} ${currentUser.lastName}` : 'System User';
+        const newHistoryEntry = { id: String(Date.now()), date: timestamp, from: brd.stage, to: pendingStage, by: userName, remarks: stageRemarks || 'No remarks' };
+        const newActivities = [{ id: String(Date.now() + 1), date: timestamp, user: userName, action: 'Stage changed', prev: brd.stage, new: pendingStage }];
+
+        missingFields.forEach((field, index) => {
+          newActivities.push({ id: String(Date.now() + 2 + index), date: timestamp, user: userName, action: `${field.id} updated`, prev: '-', new: modalFormData[field.id] });
+        });
+
+        onUpdate({ ...combinedData, stage: pendingStage, lastUpdated: timestamp, history: [newHistoryEntry, ...(brd.history || [])], activityLog: [...newActivities, ...(brd.activityLog || [])] });
+        setShowStageModal(false);
+        setStageRemarks('');
+        showToast(`Stage successfully changed to ${pendingStage}.`);
+      };
+
+      const renderLabel = (text, isReq = false) => (
+        <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">
+          {text} {(isEditing && isReq) && <span className="text-red-500">*</span>}
+        </label>
+      );
+
+      const activeStages = STAGES.filter(s => s !== 'Terminated' && s !== 'On-Hold');
+      const currentStageIdx = activeStages.includes(formData.stage) ? activeStages.indexOf(formData.stage) : -1;
+      const isTerminatedOrHold = formData.stage === 'Terminated' || formData.stage === 'On-Hold';
+      
+      const isDraftReq = !isTerminatedOrHold && currentStageIdx >= activeStages.indexOf('BRD Creation');
+      const isReworkReq = !isTerminatedOrHold && currentStageIdx >= activeStages.indexOf('Team Review');
+      const isClientReq = !isTerminatedOrHold && currentStageIdx >= activeStages.indexOf('Client Review');
+      const isOnTimeReq = !isTerminatedOrHold && currentStageIdx >= activeStages.indexOf('Client Review');
+      const isSignReq = !isTerminatedOrHold && currentStageIdx >= activeStages.indexOf('Approved');
+      const isChangesReq = !isTerminatedOrHold && currentStageIdx >= activeStages.indexOf('Approved');
+
+      return (
+        <div className="p-4 md:p-6 max-w-5xl mx-auto space-y-6 animate-in fade-in duration-500 pb-20">
+          
+          {toast && (
+            <div className="fixed top-6 right-6 bg-emerald-600 text-white px-4 py-3 rounded-lg shadow-lg flex items-center gap-2 z-50">
+              <CheckCircle size={18} /> {toast}
+            </div>
+          )}
+
+          <button onClick={onBack} className="flex items-center text-sm text-gray-500 hover:text-blue-600 transition-colors">
+            <ChevronLeft size={16} className="mr-1" /> Back to List
+          </button>
+
+          <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
+            <div className="flex flex-col md:flex-row md:items-start justify-between gap-4 mb-6">
+              <div className="flex-1 mr-4">
+                <div className="flex items-center gap-3 mb-1">
+                  <h1 className="text-2xl font-bold text-gray-900">ID: {brd.id}</h1>
+                  <Badge status={brd.stage} />
+                </div>
+                {isEditing ? (
+                  <input type="text" className="w-full max-w-lg mt-2 p-2 border border-gray-300 rounded-md text-lg font-medium outline-none focus:border-blue-500" value={formData.title} onChange={e => setFormData({...formData, title: e.target.value})} placeholder="BRD Title" />
+                ) : (
+                  <p className="text-gray-600 font-medium text-lg">{brd.title}</p>
+                )}
+                <p className="text-xs text-gray-400 mt-2">Last Updated: {brd.lastUpdated}</p>
+              </div>
+              
+              <div className="bg-gray-50 border border-gray-200 p-3 rounded-lg w-full md:w-auto md:min-w-[200px]">
+                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Update Stage</label>
+                <select 
+                  className="w-full bg-white border border-gray-300 rounded p-1.5 text-sm font-medium focus:ring-2 focus:ring-blue-500 outline-none cursor-pointer"
+                  value={formData.stage}
+                  onChange={handleStageChangeRequest}
+                  disabled={isEditing}
+                >
+                  {STAGES.map(s => <option key={s} value={s}>{s}</option>)}
+                </select>
+              </div>
+            </div>
+            
+            <Stepper currentStage={formData.stage} />
+          </div>
+
+          <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200 relative">
+            <div className="flex justify-between items-center mb-6 border-b border-gray-100 pb-4">
+              <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                <FileText size={18} className="text-blue-600"/> Record Information
+              </h2>
+              {!isEditing ? (
+                <button onClick={() => setIsEditing(true)} className="flex items-center text-sm font-medium text-blue-600 hover:text-blue-800 bg-blue-50 px-3 py-1.5 rounded-md transition-colors">
+                  <Edit2 size={14} className="mr-1.5"/> Edit Details
+                </button>
+              ) : (
+                <div className="flex gap-2">
+                  <button onClick={() => setIsEditing(false)} className="text-sm font-medium text-gray-600 hover:text-gray-800 px-3 py-1.5 rounded-md transition-colors">Cancel</button>
+                  <button onClick={handleSave} className="flex items-center text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 px-3 py-1.5 rounded-md transition-colors shadow-sm">
+                    <Save size={14} className="mr-1.5"/> Save Changes
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {validationError && (
+              <div className="mb-6 p-3 bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg flex items-center">
+                <AlertCircle size={16} className="mr-2 shrink-0" /> {validationError}
+              </div>
+            )}
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-x-8 gap-y-6">
+              <div className="space-y-1 col-span-1 md:col-span-2 lg:col-span-3">
+                {renderLabel("Description", true)}
+                {isEditing ? (
+                  <textarea 
+                    className="w-full p-2 border border-gray-300 rounded-md text-sm outline-none focus:border-blue-500 bg-white resize-y" 
+                    rows="3"
+                    placeholder="Enter BRD description..."
+                    value={formData.description} 
+                    onChange={e => setFormData({...formData, description: e.target.value})}
+                  />
+                ) : <div className="text-sm font-medium text-gray-900 whitespace-pre-wrap">{brd.description}</div>}
+              </div>
+
+              <div className="space-y-1">
+                {renderLabel("Account", true)}
+                {isEditing ? (
+                  <select className="w-full p-2 border border-gray-300 rounded-md text-sm outline-none focus:border-blue-500 bg-white" value={formData.community} onChange={e => setFormData({...formData, community: e.target.value})}>
+                    <option value="">Select Account...</option>
+                    {(Array.isArray(accounts) ? accounts : []).filter(a => a.status === 'Active' || a.name === brd.community).map(a => <option key={a.id} value={a.name}>{a.name}</option>)}
+                  </select>
+                ) : <div className="text-sm font-medium text-gray-900">{brd.community}</div>}
+              </div>
+
+              <div className="space-y-1">
+                {renderLabel("Assigned BA", true)}
+                {isEditing ? (
+                  <select className="w-full p-2 border border-gray-300 rounded-md text-sm outline-none focus:border-blue-500 bg-white" value={formData.ba} onChange={e => setFormData({...formData, ba: e.target.value})}>
+                    <option value="">Select BA...</option>
+                    {(Array.isArray(bas) ? bas : []).filter(b => b.status === 'Active' || b.name === brd.ba).map(b => <option key={b.id} value={b.name}>{b.name}</option>)}
+                  </select>
+                ) : <div className="text-sm font-medium text-gray-900">{brd.ba}</div>}
+              </div>
+
+              <div className="space-y-1">
+                {renderLabel("Classification", true)}
+                {isEditing ? (
+                  <select className="w-full p-2 border border-gray-300 rounded-md text-sm outline-none focus:border-blue-500 bg-white" value={formData.classification} onChange={e => setFormData({...formData, classification: e.target.value})}>
+                    <option value="">Select Classification...</option>
+                    <option value="CRF">CRF</option>
+                    <option value="New Project">New Project</option>
+                  </select>
+                ) : <div className="text-sm font-medium text-gray-900">{brd.classification || '-'}</div>}
+              </div>
+
+              <div className="space-y-1">
+                {renderLabel("Standard?", true)}
+                {isEditing ? (
+                  <div className="flex gap-6 pt-1">
+                    <label className="flex items-center gap-2 cursor-pointer text-sm text-gray-700 font-medium">
+                      <input type="radio" name="editIsStandard" value="Yes" checked={formData.isStandard === 'Yes'} onChange={e => setFormData({...formData, isStandard: e.target.value})} className="w-4 h-4 text-blue-600 focus:ring-blue-500"/> Yes
+                    </label>
+                    <label className="flex items-center gap-2 cursor-pointer text-sm text-gray-700 font-medium">
+                      <input type="radio" name="editIsStandard" value="No" checked={formData.isStandard === 'No'} onChange={e => setFormData({...formData, isStandard: e.target.value})} className="w-4 h-4 text-blue-600 focus:ring-blue-500"/> No
+                    </label>
+                  </div>
+                ) : <div className="text-sm font-medium text-gray-900">{brd.isStandard || '-'}</div>}
+              </div>
+
+              <div className="space-y-1">
+                {renderLabel("Document Location (Link)", false)}
+                {isEditing ? (
+                  <input type="url" placeholder="https://..." className="w-full p-2 border border-gray-300 rounded-md text-sm outline-none focus:border-blue-500" value={formData.documentLink} onChange={e => setFormData({...formData, documentLink: e.target.value})} />
+                ) : (
+                  <div className="text-sm font-medium text-gray-900 truncate pr-2">
+                    {brd.documentLink ? (
+                      <a href={brd.documentLink} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline flex items-center gap-1">
+                        Open Document <ExternalLink size={14} />
+                      </a>
+                    ) : '-'}
+                  </div>
+                )}
+              </div>
+
+              <div className="col-span-1 md:col-span-2 lg:col-span-3 border-t border-gray-100 my-2"></div>
+
+              <div className="space-y-1">
+                {renderLabel("Draft Date", isDraftReq)}
+                {isEditing ? (
+                  <input type="date" className="w-full p-2 border border-gray-300 rounded-md text-sm outline-none focus:border-blue-500" value={formData.draftDate} onChange={e => setFormData({...formData, draftDate: e.target.value})} />
+                ) : <div className="text-sm font-medium text-gray-900">{brd.draftDate || '-'}</div>}
+              </div>
+
+              <div className="space-y-1">
+                {renderLabel("Date Submitted to Client", isClientReq)}
+                {isEditing ? (
+                  <input type="date" className="w-full p-2 border border-gray-300 rounded-md text-sm outline-none focus:border-blue-500" value={formData.clientSubmitDate} onChange={e => setFormData({...formData, clientSubmitDate: e.target.value})} />
+                ) : <div className="text-sm font-medium text-gray-900">{brd.clientSubmitDate || '-'}</div>}
+              </div>
+
+              <div className="space-y-1">
+                {renderLabel("Signed-Off Date", isSignReq)}
+                {isEditing ? (
+                  <input type="date" className="w-full p-2 border border-gray-300 rounded-md text-sm outline-none focus:border-blue-500" value={formData.signOffDate} onChange={e => setFormData({...formData, signOffDate: e.target.value})} />
+                ) : <div className="text-sm font-medium text-gray-900">{brd.signOffDate || '-'}</div>}
+              </div>
+            </div>
+
+            <div className="mt-8 pt-6 border-t border-gray-200">
+              <div className="border border-gray-200 bg-gray-50/50 rounded-lg p-5">
+                <h3 className="text-sm font-semibold text-gray-900 mb-5 flex items-center gap-2">
+                  <Clock size={16} className="text-blue-600"/> Cycle Time & Durations
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+                      Preparation Days
+                    </label>
+                    <div className="text-lg font-bold text-gray-900">
+                      {calculateDays(formData.draftDate, formData.clientSubmitDate)}
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+                      Client Review & Sign-Off
+                    </label>
+                    <div className="text-lg font-bold text-gray-900">
+                      {calculateDays(formData.clientSubmitDate, formData.signOffDate)}
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+                      End-to-End Sign-off Cycle
+                    </label>
+                    <div className="text-lg font-bold text-gray-900">
+                      {calculateDays(formData.draftDate, formData.signOffDate)}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-8 pt-6 border-t border-gray-200">
+              <div className="border border-gray-200 rounded-lg p-5">
+                <h3 className="text-sm font-semibold text-gray-900 mb-5">Quality & Delivery Metrics</h3>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">
+                      WITH REWORK? {isEditing && isReworkReq && <span className="text-red-500">*</span>}
+                    </label>
+                    {isEditing ? (
+                      <div className="flex gap-6">
+                        <label className="flex items-center gap-2 cursor-pointer text-sm text-gray-700 font-medium">
+                          <input type="radio" name="withRework" value="Yes" checked={formData.withRework === 'Yes'} onChange={e => setFormData({...formData, withRework: e.target.value})} className="w-4 h-4 text-blue-600 focus:ring-blue-500 border-gray-300"/> Yes
+                        </label>
+                        <label className="flex items-center gap-2 cursor-pointer text-sm text-gray-700 font-medium">
+                          <input type="radio" name="withRework" value="No" checked={formData.withRework === 'No'} onChange={e => setFormData({...formData, withRework: e.target.value})} className="w-4 h-4 text-blue-600 focus:ring-blue-500 border-gray-300"/> No
+                        </label>
+                      </div>
+                    ) : <div className="text-sm font-medium text-gray-900">{brd.withRework || '-'}</div>}
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">
+                      CHANGES AFTER SIGN-OFF? {isEditing && isChangesReq && <span className="text-red-500">*</span>}
+                    </label>
+                    {isEditing ? (
+                      <div className="flex gap-6">
+                        <label className="flex items-center gap-2 cursor-pointer text-sm text-gray-700 font-medium">
+                          <input type="radio" name="changesAfterSignOff" value="Yes" checked={formData.changesAfterSignOff === 'Yes'} onChange={e => setFormData({...formData, changesAfterSignOff: e.target.value})} className="w-4 h-4 text-blue-600 focus:ring-blue-500 border-gray-300"/> Yes
+                        </label>
+                        <label className="flex items-center gap-2 cursor-pointer text-sm text-gray-700 font-medium">
+                          <input type="radio" name="changesAfterSignOff" value="No" checked={formData.changesAfterSignOff === 'No'} onChange={e => setFormData({...formData, changesAfterSignOff: e.target.value})} className="w-4 h-4 text-blue-600 focus:ring-blue-500 border-gray-300"/> No
+                        </label>
+                      </div>
+                    ) : <div className="text-sm font-medium text-gray-900">{brd.changesAfterSignOff || '-'}</div>}
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">
+                      DELIVERED ON-TIME? {isEditing && isOnTimeReq && <span className="text-red-500">*</span>}
+                    </label>
+                    {isEditing ? (
+                      <div className="flex gap-6">
+                        <label className="flex items-center gap-2 cursor-pointer text-sm text-gray-700 font-medium">
+                          <input type="radio" name="onTime" value="Yes" checked={formData.onTime === 'Yes'} onChange={e => setFormData({...formData, onTime: e.target.value})} className="w-4 h-4 text-blue-600 focus:ring-blue-500 border-gray-300"/> Yes
+                        </label>
+                        <label className="flex items-center gap-2 cursor-pointer text-sm text-gray-700 font-medium">
+                          <input type="radio" name="onTime" value="No" checked={formData.onTime === 'No'} onChange={e => setFormData({...formData, onTime: e.target.value})} className="w-4 h-4 text-blue-600 focus:ring-blue-500 border-gray-300"/> No
+                        </label>
+                      </div>
+                    ) : <div className="text-sm font-medium text-gray-900">{brd.onTime || '-'}</div>}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+            <div className="flex border-b border-gray-200 bg-gray-50">
+              <button className={`flex-1 py-3 text-sm font-semibold flex items-center justify-center gap-2 transition-colors ${activeTab === 'stage' ? 'text-blue-600 bg-white border-t-2 border-t-blue-600' : 'text-gray-500 hover:bg-gray-100 hover:text-gray-700'}`} onClick={() => setActiveTab('stage')}>
+                <Clock size={16}/> Stage History
+              </button>
+              <button className={`flex-1 py-3 text-sm font-semibold flex items-center justify-center gap-2 transition-colors ${activeTab === 'activity' ? 'text-blue-600 bg-white border-t-2 border-t-blue-600' : 'text-gray-500 hover:bg-gray-100 hover:text-gray-700'}`} onClick={() => setActiveTab('activity')}>
+                <Activity size={16}/> Activity History
+              </button>
+            </div>
+            <div className="p-0 overflow-x-auto max-h-80 overflow-y-auto">
+              {activeTab === 'stage' && (
+                <table className="w-full text-left text-sm whitespace-nowrap">
+                  <thead className="bg-white sticky top-0 border-b border-gray-200 shadow-sm text-gray-500">
+                    <tr>
+                      <th className="px-4 py-3 font-medium">Date & Time</th>
+                      <th className="px-4 py-3 font-medium">From Stage</th>
+                      <th className="px-4 py-3 font-medium">To Stage</th>
+                      <th className="px-4 py-3 font-medium">Updated By</th>
+                      <th className="px-4 py-3 font-medium">Remarks</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {(Array.isArray(brd.history) ? brd.history : []).map(h => (
+                      <tr key={h.id} className="hover:bg-gray-50">
+                        <td className="px-4 py-3 text-gray-500">{h.date}</td>
+                        <td className="px-4 py-3 font-medium text-gray-600">{h.from}</td>
+                        <td className="px-4 py-3 font-medium text-blue-600">{h.to}</td>
+                        <td className="px-4 py-3 text-gray-700">{h.by}</td>
+                        <td className="px-4 py-3 text-gray-500 truncate max-w-[200px]" title={h.remarks}>{h.remarks}</td>
+                      </tr>
+                    ))}
+                    {(!brd.history || brd.history.length === 0) && (
+                      <tr><td colSpan="5" className="px-4 py-8 text-center text-gray-400">No stage history available.</td></tr>
+                    )}
+                  </tbody>
+                </table>
+              )}
+              {activeTab === 'activity' && (
+                <table className="w-full text-left text-sm whitespace-nowrap">
+                  <thead className="bg-white sticky top-0 border-b border-gray-200 shadow-sm text-gray-500">
+                    <tr>
+                      <th className="px-4 py-3 font-medium">Date & Time</th>
+                      <th className="px-4 py-3 font-medium">User</th>
+                      <th className="px-4 py-3 font-medium">Activity</th>
+                      <th className="px-4 py-3 font-medium">Previous Value</th>
+                      <th className="px-4 py-3 font-medium">New Value</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {(Array.isArray(brd.activityLog) ? brd.activityLog : []).map(h => (
+                      <tr key={h.id} className="hover:bg-gray-50">
+                        <td className="px-4 py-3 text-gray-500">{h.date}</td>
+                        <td className="px-4 py-3 font-medium text-gray-700">{h.user}</td>
+                        <td className="px-4 py-3 text-gray-700">{h.action}</td>
+                        <td className="px-4 py-3 text-red-500 line-through decoration-red-300">{h.prev}</td>
+                        <td className="px-4 py-3 text-emerald-600 font-medium">{h.new}</td>
+                      </tr>
+                    ))}
+                    {(!brd.activityLog || brd.activityLog.length === 0) && (
+                      <tr><td colSpan="5" className="px-4 py-8 text-center text-gray-400">No activity history available.</td></tr>
+                    )}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          </div>
+
+          {showStageModal && (
+            <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+              <div className="bg-white rounded-xl shadow-xl w-full max-w-md flex flex-col max-h-[90vh] animate-in fade-in">
+                <div className="p-6 border-b border-gray-100 shrink-0">
+                  <div className="flex items-center gap-3 mb-2 text-amber-600">
+                    <AlertCircle size={24} />
+                    <h3 className="text-xl font-bold text-gray-900">Confirm Stage Update</h3>
+                  </div>
+                  <p className="text-gray-600 text-sm">
+                    Change stage from <strong className="text-gray-900">{brd.stage}</strong> to <strong className="text-blue-600">{pendingStage}</strong>?
+                  </p>
+                </div>
+                
+                <div className="p-6 overflow-y-auto">
+                  {modalError && (
+                    <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg flex items-center">
+                      <AlertCircle size={16} className="mr-2 shrink-0" /> {modalError}
+                    </div>
+                  )}
+                  
+                  {missingFields.length > 0 && (
+                    <div className="mb-6 p-4 bg-amber-50 border border-amber-200 rounded-lg">
+                      <p className="text-sm font-medium text-amber-800 mb-4">The following fields are required for this stage:</p>
+                      <div className="space-y-4">
+                        {missingFields.map(field => (
+                          <div key={field.id}>
+                            <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wider mb-1">
+                              {field.label} <span className="text-red-500">*</span>
+                            </label>
+                            {field.type === 'date' ? (
+                              <input type="date" className="w-full p-2 border border-gray-300 rounded text-sm outline-none focus:border-blue-500" value={modalFormData[field.id]} onChange={e => setModalFormData({...modalFormData, [field.id]: e.target.value})} />
+                            ) : (
+                              <div className="flex gap-4 pt-1">
+                                <label className="flex items-center gap-2 cursor-pointer text-sm text-gray-700">
+                                  <input type="radio" name={`modal_${field.id}`} value="Yes" checked={modalFormData[field.id] === 'Yes'} onChange={e => setModalFormData({...modalFormData, [field.id]: e.target.value})} className="text-blue-600"/> Yes
+                                </label>
+                                <label className="flex items-center gap-2 cursor-pointer text-sm text-gray-700">
+                                  <input type="radio" name={`modal_${field.id}`} value="No" checked={modalFormData[field.id] === 'No'} onChange={e => setModalFormData({...modalFormData, [field.id]: e.target.value})} className="text-blue-600"/> No
+                                </label>
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Remarks (Optional)</label>
+                    <textarea className="w-full p-2.5 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 outline-none resize-none text-sm" rows="2" placeholder="Enter reason for stage change..." value={stageRemarks} onChange={e => setStageRemarks(e.target.value)} />
+                  </div>
+                </div>
+
+                <div className="p-6 border-t border-gray-100 flex justify-end gap-3 shrink-0">
+                  <button onClick={() => { setShowStageModal(false); setPendingStage(brd.stage); setStageRemarks(''); setModalError(''); }} className="px-4 py-2 text-sm text-gray-600 font-medium hover:bg-gray-100 rounded-lg">Cancel</button>
+                  <button onClick={confirmStageChange} className="px-4 py-2 text-sm bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700">Confirm Update</button>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    // ==========================================
+    // ==========================================
+    function MasterList({ title, noun, data, onAdd, onEdit, onToggleStatus }) {
+      return (
+        <div className="p-4 md:p-6 max-w-7xl mx-auto space-y-6 animate-in fade-in duration-500">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div>
+              <h1 className="text-2xl font-bold text-gray-900">{title}</h1>
+              <p className="text-gray-500 text-sm mt-1">Manage {title} master records.</p>
+            </div>
+            <button onClick={onAdd} className="flex items-center bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors shadow-sm">
+              <Plus size={16} className="mr-2"/> Add {noun}
+            </button>
+          </div>
+
+          <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-sm whitespace-nowrap">
+                <thead className="bg-gray-50 text-gray-600 border-b border-gray-200">
+                  <tr>
+                    <th className="px-4 py-3 font-medium">{noun} Name</th>
+                    <th className="px-4 py-3 font-medium">Status</th>
+                    <th className="px-4 py-3 font-medium">Last Updated</th>
+                    <th className="px-4 py-3 font-medium text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {(Array.isArray(data) ? data : []).map(item => {
+                    const isInactive = item.status === 'Inactive';
+                    return (
+                      <tr key={item.id} className={`transition-colors ${isInactive ? 'bg-gray-50 text-gray-400' : 'hover:bg-gray-50 text-gray-900'}`}>
+                        <td className={`px-4 py-3 font-medium ${isInactive ? 'text-gray-400' : 'text-gray-900'}`}>{item.name}</td>
+                        <td className="px-4 py-3"><Badge status={item.status} /></td>
+                        <td className="px-4 py-3 text-gray-500">{item.lastUpdated}</td>
+                        <td className="px-4 py-3 text-right space-x-3">
+                          <button onClick={() => onEdit(item)} className={`font-medium inline-flex items-center justify-center p-1 rounded transition-colors align-middle ${isInactive ? 'text-gray-400 hover:text-gray-600 hover:bg-gray-200' : 'text-blue-600 hover:text-blue-800 hover:bg-blue-50'}`} title="Edit"><Edit2 size={18} /></button>
+                          <button onClick={() => onToggleStatus(item)} className="font-medium inline-flex items-center justify-center p-1 rounded transition-colors align-middle" title={item.status === 'Active' ? 'Deactivate' : 'Activate'}>
+                            {item.status === 'Active' ? <ToggleRight size={24} className="text-emerald-600 hover:text-emerald-800" /> : <ToggleLeft size={24} className="text-gray-400 hover:text-gray-600" />}
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                  {(!data || data.length === 0) && <tr><td colSpan="4" className="px-4 py-8 text-center text-gray-500">No records found.</td></tr>}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // ==========================================
+    // ==========================================
+    function LoginPage({ onLogin }) {
+      const [email, setEmail] = useState('admin@brdtracker.com');
+      const [password, setPassword] = useState('password');
+      const [error, setError] = useState('');
+
+      const handleSubmit = (e) => {
+        e.preventDefault();
+        const result = onLogin(email, password);
+        if (!result.success) setError(result.message);
+      };
+
+      return (
+        <div className="min-h-screen bg-slate-900 flex flex-col justify-center items-center p-4">
+          <div className="max-w-md w-full bg-white rounded-2xl shadow-xl overflow-hidden animate-in fade-in zoom-in duration-500">
+            <div className="bg-blue-600 p-8 text-center">
+              <div className="mx-auto bg-white/20 w-16 h-16 rounded-full flex items-center justify-center mb-4 backdrop-blur-sm"><Lock size={32} className="text-white" /></div>
+              <h2 className="text-2xl font-bold text-white">BRD Tracker</h2>
+              <p className="text-blue-100 text-sm mt-2">Sign in to manage your workspace</p>
+            </div>
+            <div className="p-8">
+              {error && <div className="mb-6 p-3 bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg flex items-center"><AlertCircle size={16} className="mr-2 shrink-0" /> {error}</div>}
+              <form onSubmit={handleSubmit} className="space-y-5">
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1.5">Email Address</label>
+                  <input type="email" required className="w-full p-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 outline-none transition-shadow" placeholder="Enter your email" value={email} onChange={e => setEmail(e.target.value)} />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1.5">Password</label>
+                  <input type="password" required className="w-full p-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 outline-none transition-shadow" placeholder="Enter your password" value={password} onChange={e => setPassword(e.target.value)} />
+                </div>
+                <button type="submit" className="w-full bg-blue-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-blue-700 transition-colors shadow-md mt-2">Sign In</button>
+              </form>
+              <div className="mt-6 text-center text-xs text-gray-500">
+                <p>Demo Credentials:</p>
+                <p className="mt-1 font-mono bg-gray-100 inline-block px-2 py-1 rounded">admin@brdtracker.com / password</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    function UserList({ users, setUsers }) {
+      const [modal, setModal] = useState({ isOpen: false, mode: '', user: null });
+      const [formData, setFormData] = useState({ firstName: '', lastName: '', email: '', password: '' });
+      const [confirmToggleModal, setConfirmToggleModal] = useState({ isOpen: false, user: null });
+
+      const openModal = (mode, user = null) => {
+        if (user) { setFormData({ firstName: user.firstName, lastName: user.lastName, email: user.email, password: user.password }); } 
+        else { setFormData({ firstName: '', lastName: '', email: '', password: '' }); }
+        setModal({ isOpen: true, mode, user });
+      };
+
+      const handleSave = (e) => {
+        e.preventDefault();
+        const timestamp = new Date().toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' });
+        if (modal.mode === 'Enroll') {
+          const newUser = { id: String(Date.now()), ...formData, status: 'Active', lastUpdated: timestamp };
+          setUsers([...users, newUser]);
+        } else {
+          setUsers(users.map(u => u.id === modal.user.id ? { ...u, ...formData, lastUpdated: timestamp } : u));
+        }
+        setModal({ isOpen: false, mode: '', user: null });
+      };
+
+      const confirmToggleStatus = () => {
+        const timestamp = new Date().toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' });
+        const newStatus = confirmToggleModal.user.status === 'Active' ? 'Inactive' : 'Active';
+        setUsers(users.map(u => u.id === confirmToggleModal.user.id ? { ...u, status: newStatus, lastUpdated: timestamp } : u));
+        setConfirmToggleModal({ isOpen: false, user: null });
+      };
+
+      return (
+        <div className="p-4 md:p-6 max-w-7xl mx-auto space-y-6 animate-in fade-in duration-500">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div>
+              <h1 className="text-2xl font-bold text-gray-900">System Users</h1>
+              <p className="text-gray-500 text-sm mt-1">Manage system access and enroll new users.</p>
+            </div>
+            <button onClick={() => openModal('Enroll')} className="flex items-center bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors shadow-sm">
+              <Plus size={16} className="mr-2"/> Enroll User
+            </button>
+          </div>
+
+          <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-sm whitespace-nowrap">
+                <thead className="bg-gray-50 text-gray-600 border-b border-gray-200">
+                  <tr>
+                    <th className="px-4 py-3 font-medium">First Name</th>
+                    <th className="px-4 py-3 font-medium">Last Name</th>
+                    <th className="px-4 py-3 font-medium">Email Address</th>
+                    <th className="px-4 py-3 font-medium">Status</th>
+                    <th className="px-4 py-3 font-medium">Last Updated</th>
+                    <th className="px-4 py-3 font-medium text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {(Array.isArray(users) ? users : []).map(user => {
+                    const isInactive = user.status === 'Inactive';
+                    return (
+                      <tr key={user.id} className={`transition-colors ${isInactive ? 'bg-gray-50 text-gray-400' : 'hover:bg-gray-50 text-gray-900'}`}>
+                        <td className="px-4 py-3 font-medium">{user.firstName}</td>
+                        <td className="px-4 py-3 font-medium">{user.lastName}</td>
+                        <td className="px-4 py-3">{user.email}</td>
+                        <td className="px-4 py-3"><Badge status={user.status} /></td>
+                        <td className="px-4 py-3">{user.lastUpdated}</td>
+                        <td className="px-4 py-3 text-right space-x-3">
+                          <button onClick={() => openModal('Edit', user)} className={`font-medium inline-flex items-center justify-center p-1 rounded transition-colors align-middle ${isInactive ? 'text-gray-400 hover:text-gray-600 hover:bg-gray-200' : 'text-blue-600 hover:text-blue-800 hover:bg-blue-50'}`} title="Edit"><Edit2 size={18} /></button>
+                          <button onClick={() => setConfirmToggleModal({ isOpen: true, user })} className="font-medium inline-flex items-center justify-center p-1 rounded transition-colors align-middle" title={user.status === 'Active' ? 'Deactivate' : 'Activate'}>
+                            {user.status === 'Active' ? <ToggleRight size={24} className="text-emerald-600 hover:text-emerald-800" /> : <ToggleLeft size={24} className="text-gray-400 hover:text-gray-600" />}
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                  {(!users || users.length === 0) && <tr><td colSpan="6" className="px-4 py-8 text-center text-gray-500">No users found.</td></tr>}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {modal.isOpen && (
+            <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+              <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6 animate-in fade-in">
+                <div className="flex justify-between items-center mb-5 border-b border-gray-100 pb-4">
+                  <h3 className="text-lg font-bold text-gray-900">{modal.mode} User</h3>
+                  <button onClick={() => setModal({ isOpen: false, mode: '', user: null })} className="text-gray-400 hover:text-gray-600"><X size={20} /></button>
+                </div>
+                <form onSubmit={handleSave} className="space-y-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">First Name <span className="text-red-500">*</span></label>
+                      <input required type="text" autoFocus className="w-full p-2.5 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 outline-none text-sm" placeholder="e.g., Jane" value={formData.firstName} onChange={(e) => setFormData({...formData, firstName: e.target.value})} />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Last Name <span className="text-red-500">*</span></label>
+                      <input required type="text" className="w-full p-2.5 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 outline-none text-sm" placeholder="e.g., Doe" value={formData.lastName} onChange={(e) => setFormData({...formData, lastName: e.target.value})} />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Email Address <span className="text-red-500">*</span></label>
+                    <input required type="email" className="w-full p-2.5 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 outline-none text-sm" placeholder="e.g., jane.doe@company.com" value={formData.email} onChange={(e) => setFormData({...formData, email: e.target.value})} />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Password <span className="text-red-500">*</span></label>
+                    <input required type="password" className="w-full p-2.5 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 outline-none text-sm" placeholder="Enter password" value={formData.password} onChange={(e) => setFormData({...formData, password: e.target.value})} />
+                  </div>
+                  <div className="pt-4 flex justify-end gap-3 border-t border-gray-100 mt-6">
+                    <button type="button" onClick={() => setModal({ isOpen: false, mode: '', user: null })} className="px-4 py-2 text-sm text-gray-600 font-medium hover:bg-gray-100 rounded-lg">Cancel</button>
+                    <button type="submit" className="px-4 py-2 text-sm bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 shadow-sm">Save</button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          )}
+
+          {confirmToggleModal.isOpen && (
+            <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+              <div className="bg-white rounded-xl shadow-xl w-full max-w-sm p-6 animate-in fade-in">
+                <div className="flex items-center gap-3 mb-4 text-amber-600">
+                  <AlertCircle size={24} />
+                  <h3 className="text-lg font-bold text-gray-900">Confirm Action</h3>
+                </div>
+                <p className="text-gray-600 mb-6 text-sm">
+                  Are you sure you want to <strong>{confirmToggleModal.user.status === 'Active' ? 'deactivate' : 'activate'}</strong> the user <strong className="text-gray-900">{confirmToggleModal.user.firstName} {confirmToggleModal.user.lastName}</strong>?
+                </p>
+                <div className="flex justify-end gap-3">
+                  <button onClick={() => setConfirmToggleModal({ isOpen: false, user: null })} className="px-4 py-2 text-sm text-gray-600 font-medium hover:bg-gray-100 rounded-lg">Cancel</button>
+                  <button onClick={confirmToggleStatus} className={`px-4 py-2 text-sm text-white font-medium rounded-lg shadow-sm ${confirmToggleModal.user.status === 'Active' ? 'bg-red-600 hover:bg-red-700' : 'bg-emerald-600 hover:bg-emerald-700'}`}>
+                    Confirm
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    // ==========================================
+    // ==========================================
+    function ImportModule({ onImport }) {
+      const [file, setFile] = useState(null);
+      const [status, setStatus] = useState('');
+      const [isImporting, setIsImporting] = useState(false);
+
+      const handleFileChange = (e) => {
+        if (e.target.files && e.target.files[0]) {
+          setFile(e.target.files[0]);
+          setStatus('');
+        }
+      };
+
+      const handleImport = async () => {
+        if (!file) return;
+        setIsImporting(true);
+        setStatus('Loading Excel parser...');
+
+        const processFile = () => {
+          const reader = new FileReader();
+          reader.onload = (e) => {
+            try {
+              const data = new Uint8Array(e.target.result);
+              const workbook = window.XLSX.read(data, { type: 'array' });
+              const firstSheetName = workbook.SheetNames[0];
+              const worksheet = workbook.Sheets[firstSheetName];
+              
+              const json = window.XLSX.utils.sheet_to_json(worksheet, { raw: false });
+              
+              if (json.length === 0) {
+                setStatus('Error: The uploaded Excel file is empty.');
+                setIsImporting(false);
+                return;
+              }
+
+              setStatus(`Processing ${json.length} records...`);
+              
+              const processedRecords = json.map(row => ({
+                id: String(row.id || Date.now() + Math.random()),
+                title: String(row.title || 'Untitled'),
+                description: String(row.description || ''),
+                community: String(row.community || ''),
+                ba: String(row.ba || ''),
+                classification: String(row.classification || ''),
+                isStandard: String(row.isStandard || ''),
+                documentLink: String(row.documentLink || ''),
+                stage: String(row.stage || 'Backlog'),
+                draftDate: String(row.draftDate || ''),
+                clientSubmitDate: String(row.clientSubmittedDate || row.clientSubmitDate || ''),
+                signOffDate: String(row.signOffDate || ''),
+                withRework: String(row.withRework || ''),
+                changesAfterSignOff: String(row.changesAfterSignOff || ''),
+                onTime: String(row.onTime || ''),
+                lastUpdated: String(row.lastUpdated || new Date().toLocaleString('en-US', { dateStyle: 'short', timeStyle: 'short' })),
+                history: [],
+                activityLog: []
+              }));
+
+              onImport(processedRecords);
+              setStatus(`Import Complete! Successfully added/updated ${processedRecords.length} records.`);
+              setFile(null);
+            } catch (err) {
+              setStatus(`Error parsing file: ${err.message}`);
+            } finally {
+              setIsImporting(false);
+            }
+          };
+          reader.readAsArrayBuffer(file);
+        };
+
+        if (window.XLSX) {
+          processFile();
+        } else {
+          const script = document.createElement('script');
+          script.src = 'https://unpkg.com/xlsx/dist/xlsx.full.min.js';
+          script.onload = processFile;
+          script.onerror = () => {
+            setStatus('Error: Failed to load Excel parser library. Please check your internet connection.');
+            setIsImporting(false);
+          };
+          document.body.appendChild(script);
+        }
+      };
+
+      return (
+        <div className="p-4 md:p-6 max-w-4xl mx-auto space-y-6 animate-in fade-in duration-500">
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900">Import BRDs</h1>
+            <p className="text-gray-500 text-sm mt-1">Upload an Excel file to bulk import or update BRD records.</p>
+          </div>
+
+          <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
+            <div className="border-2 border-dashed border-gray-300 rounded-xl p-8 text-center bg-gray-50 hover:bg-gray-100 transition-colors">
+              <Upload className="mx-auto h-12 w-12 text-gray-400 mb-4" />
+              <h3 className="text-lg font-medium text-gray-900 mb-2">Drag and drop your Excel file here</h3>
+              <p className="text-sm text-gray-500 mb-6">or click to browse from your computer (.xlsx, .xls)</p>
+              
+              <input type="file" id="excel-upload" accept=".xlsx, .xls" className="hidden" onChange={handleFileChange} />
+              <label htmlFor="excel-upload" className="cursor-pointer inline-flex items-center px-5 py-2.5 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors shadow-sm">
+                <Upload size={18} className="mr-2"/> Select Excel File
+              </label>
+              
+              {file && (
+                  <div className="mt-4 p-3 bg-blue-50 border border-blue-100 rounded-lg inline-block text-blue-700 text-sm font-medium">
+                      Selected: {file.name}
+                  </div>
+              )}
+            </div>
+
+            <div className="mt-6 flex justify-end">
+                <button onClick={handleImport} disabled={!file || isImporting} className="px-6 py-2.5 bg-emerald-600 text-white text-sm font-medium rounded-lg hover:bg-emerald-700 disabled:opacity-50 transition-colors shadow-sm">
+                    {isImporting ? 'Importing...' : 'Run Import'}
+                </button>
+            </div>
+
+            {status && (
+              <div className={`mt-6 p-4 text-sm rounded-lg border ${status.includes('Error') ? 'bg-red-50 text-red-700 border-red-200' : 'bg-emerald-50 text-emerald-700 border-emerald-200'}`}>
+                {status}
+              </div>
+            )}
+
+            <div className="mt-8 bg-amber-50 p-5 rounded-xl border border-amber-200">
+               <h4 className="text-sm font-bold text-amber-800 flex items-center mb-3"><AlertCircle size={18} className="mr-2"/> Format Requirements</h4>
+               <p className="text-sm text-amber-700 mb-3">Ensure your Excel file has headers in the first row. The system expects exactly these column headers:</p>
+               <div className="flex flex-wrap gap-2 mt-2">
+                 {['id', 'title', 'description', 'community', 'ba', 'classification', 'isStandard', 'documentLink', 'stage', 'draftDate', 'clientSubmittedDate', 'signOffDate', 'withRework', 'changesAfterSignOff', 'onTime', 'lastUpdated'].map(col => (
+                    <code key={col} className="bg-white border border-amber-200 text-amber-900 px-2 py-1 rounded text-xs font-mono shadow-sm">{col}</code>
+                 ))}
+               </div>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // ==========================================
+    // ==========================================
+    function App() {
+      const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : null;
+      const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+      
+      let auth = null;
+      let db = null;
+      
+      if (firebaseConfig && window.FB) {
+        try {
+            const app = window.FB.initializeApp(firebaseConfig);
+            auth = window.FB.getAuth(app);
+            db = window.FB.getFirestore(app);
+        } catch(e) {
+            console.error("Firebase init error", e);
+        }
+      }
+
+      const [isAuthenticated, setIsAuthenticated] = useState(false);
+      const [currentUser, setCurrentUser] = useState(null);
+      
+      const [users, setUsers] = useState(INITIAL_USERS);
+      const [brds, setBrds] = useState(INITIAL_BRDS);
+      const [bas, setBas] = useState(INITIAL_BAS);
+      const [accounts, setAccounts] = useState(INITIAL_ACCOUNTS);
+      
+      const [activeModule, setActiveModule] = useState('dashboard');
+      const [selectedBrd, setSelectedBrd] = useState(null);
+      const [showNewBrdModal, setShowNewBrdModal] = useState(false);
+      const [newBrdData, setNewBrdData] = useState({ title: '', description: '', community: '', ba: '', classification: '', isStandard: '', documentLink: '' });
+      const [masterModal, setMasterModal] = useState({ isOpen: false, type: '', mode: '', data: null });
+      const [masterInput, setMasterInput] = useState('');
+      const [confirmToggleModal, setConfirmToggleModal] = useState({ isOpen: false, type: '', item: null });
+
+      const [isLoading, setIsLoading] = useState(true);
+      const [isLocalMode, setIsLocalMode] = useState(!firebaseConfig);
+      const [dbUser, setDbUser] = useState(null);
+
+      useEffect(() => {
+        if (isLocalMode) {
+          setIsLoading(false);
+          return;
+        }
+        const initAuth = async () => {
+          try {
+            if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+              await window.FB.signInWithCustomToken(auth, __initial_auth_token);
+            } else {
+              await window.FB.signInAnonymously(auth);
+            }
+          } catch (err) {
+            console.error("Firebase Auth Error:", err);
+          }
+        };
+        initAuth();
+
+        const unsubscribeAuth = window.FB.onAuthStateChanged(auth, (user) => {
+          setDbUser(user);
+        });
+
+        return () => unsubscribeAuth();
+      }, [isLocalMode, auth]);
+
+      useEffect(() => {
+        if (isLocalMode || !dbUser || !db) return;
+
+        const brdsRef = window.FB.collection(db, 'artifacts', appId, 'public', 'data', 'BRDs');
+        const unsubscribeBrds = window.FB.onSnapshot(brdsRef, (snapshot) => {
+          const fetchedBrds = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+          if (fetchedBrds.length > 0) setBrds(fetchedBrds);
+          setIsLoading(false);
+        }, (error) => {
+          console.error("Error fetching BRDs:", error);
+          setIsLoading(false);
+        });
+
+        const usersRef = window.FB.collection(db, 'artifacts', appId, 'public', 'data', 'Users');
+        const unsubscribeUsers = window.FB.onSnapshot(usersRef, (snapshot) => {
+          const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+          if (data.length > 0) setUsers(data);
+        }, console.error);
+
+        const basRef = window.FB.collection(db, 'artifacts', appId, 'public', 'data', 'BAs');
+        const unsubscribeBas = window.FB.onSnapshot(basRef, (snapshot) => {
+          const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+          if (data.length > 0) setBas(data);
+        }, console.error);
+
+        const accountsRef = window.FB.collection(db, 'artifacts', appId, 'public', 'data', 'Accounts');
+        const unsubscribeAccounts = window.FB.onSnapshot(accountsRef, (snapshot) => {
+          const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+          if (data.length > 0) setAccounts(data);
+        }, console.error);
+
+        return () => {
+          unsubscribeBrds();
+          unsubscribeUsers();
+          unsubscribeBas();
+          unsubscribeAccounts();
+        };
+      }, [isLocalMode, dbUser, db, appId]);
+
+      const syncBrdToDatabase = async (brdData) => {
+        if (isLocalMode || !dbUser || !db) return;
+        try {
+          const docRef = window.FB.doc(db, 'artifacts', appId, 'public', 'data', 'BRDs', String(brdData.id));
+          await window.FB.setDoc(docRef, brdData);
+        } catch (err) {
+          console.error("Error saving BRD to Firebase:", err);
+        }
+      };
+
+      const syncMasterToDatabase = async (collectionName, masterData) => {
+        if (isLocalMode || !dbUser || !db) return;
+        try {
+          const docRef = window.FB.doc(db, 'artifacts', appId, 'public', 'data', collectionName, String(masterData.id));
+          await window.FB.setDoc(docRef, masterData);
+        } catch (err) {
+          console.error(`Error saving ${collectionName} to Firebase:`, err);
+        }
+      };
+
+      const handleLogin = (email, password) => {
+        const user = users.find(u => u.email === email && u.password === password);
+        if (user && user.status === 'Active') {
+          setCurrentUser(user);
+          setIsAuthenticated(true);
+          return { success: true };
+        }
+        return { success: false, message: 'Invalid credentials or inactive account.' };
+      };
+
+      const handleLogout = () => {
+        setIsAuthenticated(false);
+        setCurrentUser(null);
+        setActiveModule('dashboard');
+      };
+
+      const handleNav = (module) => {
+        setActiveModule(module);
+        setSelectedBrd(null);
+      };
+
+      const handleUpdateBrd = (updatedBrd) => {
+        if (isLocalMode) setBrds(prev => prev.map(b => b.id === updatedBrd.id ? updatedBrd : b));
+        setSelectedBrd(updatedBrd);
+        syncBrdToDatabase(updatedBrd);
+      };
+
+      const handleBulkImport = (newRecords) => {
+        const existingIds = new Set(brds.map(b => String(b.id)));
+        const recordsToAdd = newRecords.filter(r => !existingIds.has(String(r.id)));
+        const recordsToUpdate = newRecords.filter(r => existingIds.has(String(r.id)));
+        
+        if (isLocalMode) {
+            let updatedBrds = [...brds];
+            recordsToUpdate.forEach(record => {
+                const index = updatedBrds.findIndex(b => String(b.id) === String(record.id));
+                if (index !== -1) updatedBrds[index] = { ...updatedBrds[index], ...record };
+            });
+            updatedBrds = [...recordsToAdd, ...updatedBrds];
+            setBrds(updatedBrds);
+        }
+        
+        newRecords.forEach(record => {
+             syncBrdToDatabase(record);
+        });
+      };
+
+      const handleCreateNewBrd = (e) => {
+        e.preventDefault();
+        const newId = String(brds.length > 0 ? Math.max(...brds.map(b => parseInt(b.id, 10) || 0)) + 1 : 1);
+        const timestamp = new Date().toLocaleString('en-US', { dateStyle: 'short', timeStyle: 'short' });
+        const userName = currentUser ? `${currentUser.firstName} ${currentUser.lastName}` : 'System User';
+        
+        const newBrd = {
+          id: newId, title: newBrdData.title, description: newBrdData.description,
+          community: newBrdData.community, ba: newBrdData.ba, classification: newBrdData.classification,
+          isStandard: newBrdData.isStandard, documentLink: newBrdData.documentLink, stage: 'Backlog',
+          draftDate: '', clientSubmitDate: '', signOffDate: '', withRework: '', changesAfterSignOff: '', onTime: '',
+          lastUpdated: timestamp,
+          history: [{ id: String(Date.now()), brdId: newId, date: timestamp, from: '-', to: 'Backlog', by: userName, remarks: 'Record created' }],
+          activityLog: [{ id: String(Date.now() + 1), brdId: newId, date: timestamp, user: userName, action: 'Record Created', prev: '-', new: 'Initial Setup' }]
+        };
+
+        if (isLocalMode) setBrds(prev => [newBrd, ...prev]);
+        setShowNewBrdModal(false);
+        setNewBrdData({ title: '', description: '', community: '', ba: '', classification: '', isStandard: '', documentLink: '' });
+        setSelectedBrd(newBrd);
+        
+        syncBrdToDatabase(newBrd);
+      };
+
+      const openMasterModal = (type, mode, item = null) => {
+        setMasterInput(item ? item.name : '');
+        setMasterModal({ isOpen: true, type, mode, data: item });
+      };
+
+      const handleSaveMasterData = (e) => {
+        e.preventDefault();
+        if (!masterInput.trim()) return;
+        
+        const collectionName = masterModal.type === 'BA' ? 'BAs' : 'Accounts';
+        const timestamp = new Date().toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' });
+
+        let updatedItem;
+        if (masterModal.mode === 'Add') {
+          updatedItem = { id: String(Date.now()), name: masterInput, status: 'Active', lastUpdated: timestamp };
+        } else {
+          updatedItem = { ...masterModal.data, name: masterInput, lastUpdated: timestamp };
+        }
+        
+        if (isLocalMode) {
+          const setList = masterModal.type === 'BA' ? setBas : setAccounts;
+          const list = masterModal.type === 'BA' ? bas : accounts;
+          if (masterModal.mode === 'Add') setList([...list, updatedItem]);
+          else setList(list.map(i => i.id === masterModal.data.id ? updatedItem : i));
+        }
+        
+        setMasterModal({ isOpen: false, type: '', mode: '', data: null });
+        syncMasterToDatabase(collectionName, updatedItem);
+      };
+
+      const confirmToggleStatus = () => {
+        const collectionName = confirmToggleModal.type === 'BA' ? 'BAs' : 'Accounts';
+        const timestamp = new Date().toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' });
+        const newStatus = confirmToggleModal.item.status === 'Active' ? 'Inactive' : 'Active';
+        const updatedItem = { ...confirmToggleModal.item, status: newStatus, lastUpdated: timestamp };
+
+        if (isLocalMode) {
+          const setList = confirmToggleModal.type === 'BA' ? setBas : setAccounts;
+          const list = confirmToggleModal.type === 'BA' ? bas : accounts;
+          setList(list.map(i => i.id === confirmToggleModal.item.id ? updatedItem : i));
+        }
+        
+        setConfirmToggleModal({ isOpen: false, type: '', item: null });
+        syncMasterToDatabase(collectionName, updatedItem);
+      };
+
+      const handleSetUsers = (newUsersArray) => {
+        if (isLocalMode) setUsers(newUsersArray);
+        const updatedUser = newUsersArray.reduce((latest, current) => new Date(current.lastUpdated) > new Date(latest.lastUpdated) ? current : latest, newUsersArray[0]);
+        if (updatedUser) syncMasterToDatabase('Users', updatedUser);
+      };
+
+      if (isLoading) {
+        return (
+          <div className="flex h-screen items-center justify-center bg-slate-900 text-white flex-col gap-4">
+            <RefreshCw size={40} className="animate-spin text-blue-500" />
+            <h2 className="text-xl font-semibold">Connecting to Database...</h2>
+          </div>
+        );
+      }
+
+      if (!isAuthenticated) {
+        return <LoginPage onLogin={handleLogin} />;
+      }
+
+      return (
+        <div className="flex h-screen bg-gray-100 font-sans text-gray-900 overflow-hidden">
+          
+          <aside className="w-20 md:w-64 bg-slate-900 text-white flex flex-col shrink-0 transition-all z-20 shadow-xl">
+            <div className="h-16 flex items-center justify-center md:justify-start px-0 md:px-6 border-b border-slate-800 shrink-0">
+              <div className="bg-blue-600 p-1.5 rounded-md md:mr-3">
+                <FileText size={18} className="text-white"/>
+              </div>
+              <span className="font-bold tracking-wide hidden md:block">BRD Tracker</span>
+            </div>
+            <nav className="flex-1 py-6 px-3 space-y-2 overflow-y-auto">
+              <button onClick={() => handleNav('dashboard')} className={`w-full flex items-center justify-center md:justify-start px-3 py-3 rounded-lg text-sm font-medium transition-colors ${activeModule === 'dashboard' ? 'bg-blue-600 text-white shadow-sm' : 'text-gray-400 hover:bg-slate-800 hover:text-white'}`}>
+                <LayoutDashboard size={20} className="md:mr-3" /> <span className="hidden md:block">Dashboard</span>
+              </button>
+              <button onClick={() => handleNav('brds')} className={`w-full flex items-center justify-center md:justify-start px-3 py-3 rounded-lg text-sm font-medium transition-colors ${activeModule === 'brds' ? 'bg-blue-600 text-white shadow-sm' : 'text-gray-400 hover:bg-slate-800 hover:text-white'}`}>
+                <FileText size={20} className="md:mr-3" /> <span className="hidden md:block">BRDs</span>
+              </button>
+              <button onClick={() => handleNav('bas')} className={`w-full flex items-center justify-center md:justify-start px-3 py-3 rounded-lg text-sm font-medium transition-colors ${activeModule === 'bas' ? 'bg-blue-600 text-white shadow-sm' : 'text-gray-400 hover:bg-slate-800 hover:text-white'}`}>
+                <Users size={20} className="md:mr-3" /> <span className="hidden md:block">BAs</span>
+              </button>
+              <button onClick={() => handleNav('accounts')} className={`w-full flex items-center justify-center md:justify-start px-3 py-3 rounded-lg text-sm font-medium transition-colors ${activeModule === 'accounts' ? 'bg-blue-600 text-white shadow-sm' : 'text-gray-400 hover:bg-slate-800 hover:text-white'}`}>
+                <Building2 size={20} className="md:mr-3" /> <span className="hidden md:block">Accounts</span>
+              </button>
+              <button onClick={() => handleNav('users')} className={`w-full flex items-center justify-center md:justify-start px-3 py-3 rounded-lg text-sm font-medium transition-colors ${activeModule === 'users' ? 'bg-blue-600 text-white shadow-sm' : 'text-gray-400 hover:bg-slate-800 hover:text-white'}`}>
+                <UserCog size={20} className="md:mr-3" /> <span className="hidden md:block">Users</span>
+              </button>
+              
+              <div className="mt-8 border-t border-slate-700 pt-4">
+                 <button onClick={() => handleNav('import')} className={`w-full flex items-center justify-center md:justify-start px-3 py-3 rounded-lg text-sm font-medium transition-colors ${activeModule === 'import' ? 'bg-emerald-600 text-white shadow-sm' : 'text-emerald-500 hover:bg-slate-800 hover:text-emerald-400'}`}>
+                  <FileUp size={20} className="md:mr-3" /> <span className="hidden md:block">Import BRDs</span>
+                 </button>
+              </div>
+            </nav>
+          </aside>
+
+          <div className="flex-1 flex flex-col min-w-0">
+            <header className="h-16 bg-white shadow-sm flex items-center justify-between px-4 md:px-6 shrink-0 z-10 border-b border-gray-200">
+              <div className="flex items-center">
+                {isLocalMode && (
+                  <span className="bg-amber-100 text-amber-800 text-xs font-bold px-3 py-1 rounded-full border border-amber-200 flex items-center shadow-sm">
+                    <AlertCircle size={14} className="mr-1.5"/> Local Demo Mode (No Database Connected)
+                  </span>
+                )}
+              </div>
+              <div className="flex items-center space-x-4 text-sm">
+                <span className="text-gray-500 hidden md:inline-block">Logged in as: <strong className="text-gray-900">{currentUser.firstName} {currentUser.lastName}</strong></span>
+                <div className="w-8 h-8 bg-blue-100 text-blue-700 rounded-full flex items-center justify-center font-bold border border-blue-200">
+                  {currentUser.firstName[0]}{currentUser.lastName[0]}
+                </div>
+                <button onClick={handleLogout} className="text-gray-400 hover:text-gray-700 ml-4 p-1 transition-colors" title="Logout">
+                  <LogOut size={18} />
+                </button>
+              </div>
+            </header>
+
+            <main className="flex-1 overflow-y-auto bg-gray-50 relative">
+              {activeModule === 'dashboard' && <Dashboard brds={brds} />}
+              {activeModule === 'brds' && !selectedBrd && <BrdList brds={brds} onView={setSelectedBrd} onAdd={() => setShowNewBrdModal(true)} accounts={accounts} bas={bas} />}
+              {activeModule === 'brds' && selectedBrd && <BrdDetail brd={selectedBrd} onBack={() => setSelectedBrd(null)} onUpdate={handleUpdateBrd} accounts={accounts} bas={bas} currentUser={currentUser} />}
+              {activeModule === 'bas' && <MasterList title="BAs" noun="BA" data={bas} onAdd={() => openMasterModal('BA', 'Add')} onEdit={(item) => openMasterModal('BA', 'Edit', item)} onToggleStatus={(item) => setConfirmToggleModal({ isOpen: true, type: 'BA', item })} />}
+              {activeModule === 'accounts' && <MasterList title="Accounts" noun="Account" data={accounts} onAdd={() => openMasterModal('Account', 'Add')} onEdit={(item) => openMasterModal('Account', 'Edit', item)} onToggleStatus={(item) => setConfirmToggleModal({ isOpen: true, type: 'Account', item })} />}
+              {activeModule === 'users' && <UserList users={users} setUsers={handleSetUsers} />}
+              {activeModule === 'import' && <ImportModule onImport={handleBulkImport} />}
+            </main>
+          </div>
+
+          {showNewBrdModal && (
+            <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+              <div className="bg-white rounded-xl shadow-xl w-full max-w-md flex flex-col max-h-[90vh] animate-in fade-in">
+                <div className="flex justify-between items-center p-6 border-b border-gray-100 shrink-0">
+                  <h3 className="text-xl font-bold text-gray-900">Create New BRD</h3>
+                  <button onClick={() => setShowNewBrdModal(false)} className="text-gray-400 hover:text-gray-600"><X size={20} /></button>
+                </div>
+                <div className="overflow-y-auto p-6">
+                  <form id="new-brd-form" onSubmit={handleCreateNewBrd} className="space-y-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">BRD Title <span className="text-red-500">*</span></label>
+                      <input required type="text" className="w-full p-2.5 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 outline-none text-sm" placeholder="e.g., New Payment Gateway" value={newBrdData.title} onChange={(e) => setNewBrdData({...newBrdData, title: e.target.value})}/>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Description <span className="text-red-500">*</span></label>
+                      <textarea 
+                        required 
+                        className="w-full p-2.5 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 outline-none bg-white text-sm resize-none" 
+                        rows="3"
+                        placeholder="Enter short description..."
+                        value={newBrdData.description} 
+                        onChange={(e) => setNewBrdData({...newBrdData, description: e.target.value})}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Account <span className="text-red-500">*</span></label>
+                      <select required className="w-full p-2.5 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 outline-none bg-white text-sm" value={newBrdData.community} onChange={(e) => setNewBrdData({...newBrdData, community: e.target.value})}>
+                        <option value="">Select Account</option>
+                        {(Array.isArray(accounts) ? accounts : []).filter(a => a.status === 'Active').map(a => <option key={a.id} value={a.name}>{a.name}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Assigned BA <span className="text-red-500">*</span></label>
+                      <select required className="w-full p-2.5 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 outline-none bg-white text-sm" value={newBrdData.ba} onChange={(e) => setNewBrdData({...newBrdData, ba: e.target.value})}>
+                        <option value="">Select BA</option>
+                        {(Array.isArray(bas) ? bas : []).filter(b => b.status === 'Active').map(ba => <option key={ba.id} value={ba.name}>{ba.name}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Classification <span className="text-red-500">*</span></label>
+                      <select required className="w-full p-2.5 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 outline-none bg-white text-sm" value={newBrdData.classification} onChange={(e) => setNewBrdData({...newBrdData, classification: e.target.value})}>
+                        <option value="">Select Classification</option>
+                        <option value="CRF">CRF</option>
+                        <option value="New Project">New Project</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Standard? <span className="text-red-500">*</span></label>
+                      <div className="flex gap-6 mt-2">
+                        <label className="flex items-center gap-2 cursor-pointer text-sm text-gray-700 font-medium">
+                          <input required type="radio" name="newIsStandard" value="Yes" checked={newBrdData.isStandard === 'Yes'} onChange={e => setNewBrdData({...newBrdData, isStandard: e.target.value})} className="w-4 h-4 text-blue-600 focus:ring-blue-500 border-gray-300"/> Yes
+                        </label>
+                        <label className="flex items-center gap-2 cursor-pointer text-sm text-gray-700 font-medium">
+                          <input required type="radio" name="newIsStandard" value="No" checked={newBrdData.isStandard === 'No'} onChange={e => setNewBrdData({...newBrdData, isStandard: e.target.value})} className="w-4 h-4 text-blue-600 focus:ring-blue-500 border-gray-300"/> No
+                        </label>
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Document Location (Link)</label>
+                      <input type="url" className="w-full p-2.5 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 outline-none text-sm" placeholder="e.g., https://docs.google.com/..." value={newBrdData.documentLink} onChange={(e) => setNewBrdData({...newBrdData, documentLink: e.target.value})}/>
+                    </div>
+                  </form>
+                </div>
+                <div className="p-6 border-t border-gray-100 flex justify-end gap-3 shrink-0">
+                  <button type="button" onClick={() => setShowNewBrdModal(false)} className="px-4 py-2 text-gray-600 text-sm font-medium hover:bg-gray-100 rounded-lg">Cancel</button>
+                  <button type="submit" form="new-brd-form" className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 shadow-sm">Create BRD</button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {masterModal.isOpen && (
+            <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+              <div className="bg-white rounded-xl shadow-xl w-full max-w-sm p-6 animate-in fade-in">
+                <div className="flex justify-between items-center mb-5">
+                  <h3 className="text-lg font-bold text-gray-900">{masterModal.mode} {masterModal.type}</h3>
+                  <button onClick={() => setMasterModal({ isOpen: false, type: '', mode: '', data: null })} className="text-gray-400 hover:text-gray-600"><X size={20} /></button>
+                </div>
+                <form onSubmit={handleSaveMasterData} className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">{masterModal.type} Name <span className="text-red-500">*</span></label>
+                    <input required type="text" autoFocus className="w-full p-2.5 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 outline-none text-sm" placeholder={`e.g., ${masterModal.type === 'BA' ? 'Jane Doe' : 'Acme Corp'}`} value={masterInput} onChange={(e) => setMasterInput(e.target.value)} />
+                  </div>
+                  <div className="pt-2 flex justify-end gap-3">
+                    <button type="button" onClick={() => setMasterModal({ isOpen: false, type: '', mode: '', data: null })} className="px-4 py-2 text-sm text-gray-600 font-medium hover:bg-gray-100 rounded-lg">Cancel</button>
+                    <button type="submit" className="px-4 py-2 text-sm bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 shadow-sm">Save</button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          )}
+
+          {confirmToggleModal.isOpen && confirmToggleModal.item && (
+            <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+              <div className="bg-white rounded-xl shadow-xl w-full max-w-sm p-6 animate-in fade-in">
+                <div className="flex items-center gap-3 mb-4 text-amber-600">
+                  <AlertCircle size={24} />
+                  <h3 className="text-lg font-bold text-gray-900">Confirm Action</h3>
+                </div>
+                <p className="text-gray-600 mb-6 text-sm">
+                  Are you sure you want to <strong>{confirmToggleModal.item.status === 'Active' ? 'deactivate' : 'activate'}</strong> the record for <strong className="text-gray-900">{confirmToggleModal.item.name}</strong>?
+                </p>
+                <div className="flex justify-end gap-3">
+                  <button onClick={() => setConfirmToggleModal({ isOpen: false, type: '', item: null })} className="px-4 py-2 text-sm text-gray-600 font-medium hover:bg-gray-100 rounded-lg">Cancel</button>
+                  <button onClick={confirmToggleStatus} className={`px-4 py-2 text-sm text-white font-medium rounded-lg shadow-sm ${confirmToggleModal.item.status === 'Active' ? 'bg-red-600 hover:bg-red-700' : 'bg-emerald-600 hover:bg-emerald-700'}`}>
+                    Confirm
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<App />);
+  </script>
+</body>
+</html>
